@@ -181,6 +181,7 @@ function renderStores() {
     const el = document.createElement("div");
     el.className = "marker-store" + (i === 0 ? " nearest" : "");
     el.innerHTML = "<span>🍾</span>";
+    s._el = el;
     el.addEventListener("click", (e) => {
       e.stopPropagation();
       selectStore(s);
@@ -202,6 +203,7 @@ function renderStores() {
 
 function selectStore(s) {
   state.target = s;
+  state.stores.forEach((x) => x._el && x._el.classList.toggle("selected", x === s));
   $("info-name").textContent = s.name;
   const d = haversineMeters(state.pos, s);
   $("info-meta").textContent = [fmtDist(d) + " away", s.addr, labelFor(s.shop)].filter(Boolean).join(" · ");
@@ -336,27 +338,44 @@ function setupCompassPermission() {
     typeof DeviceOrientationEvent !== "undefined" &&
     typeof DeviceOrientationEvent.requestPermission === "function";
 
-  if (needsPermission) {
-    // iOS 13+: must be requested from a user gesture
-    btn.classList.remove("hidden");
-    btn.addEventListener("click", async () => {
-      try {
-        const resp = await DeviceOrientationEvent.requestPermission();
-        if (resp === "granted") {
-          btn.classList.add("hidden");
-          attachOrientationListeners();
-        } else {
-          banner("Compass permission denied — arrow will stay north-up", true);
-        }
-      } catch (e) {
+  if (!needsPermission) {
+    attachOrientationListeners();
+    return;
+  }
+
+  // iOS 13+: requestPermission() must run inside a user gesture, but once the
+  // user has granted it for this site it resolves "granted" with no prompt.
+  // So we piggyback on ANY tap (tab switch, map, etc.) — after the first-ever
+  // grant the compass enables itself silently on every launch and the button
+  // never appears again.
+  let enabled = false;
+  const tryEnable = async (fromButton) => {
+    if (enabled) return;
+    try {
+      const resp = await DeviceOrientationEvent.requestPermission();
+      if (resp === "granted") {
+        enabled = true;
+        btn.classList.add("hidden");
+        attachOrientationListeners();
+        document.removeEventListener("click", silentTry, true);
+      } else {
+        // explicit denial: stop nagging on every tap, leave the button as the way back in
+        document.removeEventListener("click", silentTry, true);
+        if (fromButton) banner("Compass permission denied — arrow will stay north-up", true);
+      }
+    } catch (e) {
+      // not triggerable from this gesture / unsupported; the button remains
+      if (fromButton) {
         banner("Compass unavailable on this device");
         console.error(e);
       }
-    });
-  } else {
-    attachOrientationListeners();
-    // if no orientation event fires shortly, we just keep the north-up arrow
-  }
+    }
+  };
+  const silentTry = () => tryEnable(false);
+
+  btn.classList.remove("hidden");
+  btn.addEventListener("click", () => tryEnable(true));
+  document.addEventListener("click", silentTry, true);
 }
 
 /* ---------------- tabs & wiring ---------------- */
