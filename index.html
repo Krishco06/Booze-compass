@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Booze Compass</title>
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#12121a">
+  <!-- iOS home-screen install -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Booze Compass">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- status banner (location / data errors) -->
+  <div id="banner" class="banner hidden"></div>
+
+  <!-- MAP TAB -->
+  <section id="tab-map" class="tab active">
+    <div id="map"></div>
+    <div id="store-info" class="store-info hidden">
+      <div class="store-name" id="info-name"></div>
+      <div class="store-meta" id="info-meta"></div>
+      <button id="btn-point" class="pill">Point me there →</button>
+    </div>
+  </section>
+
+  <!-- COMPASS TAB -->
+  <section id="tab-compass" class="tab">
+    <div class="compass-wrap">
+      <div class="compass-target" id="compass-store">Finding nearest store…</div>
+      <div class="compass-dial">
+        <div class="tick n">N</div><div class="tick e">E</div>
+        <div class="tick s">S</div><div class="tick w">W</div>
+        <svg id="arrow" class="arrow" viewBox="0 0 100 100" aria-label="direction arrow">
+          <polygon points="50,6 68,62 50,50 32,62" fill="var(--accent)"/>
+          <circle cx="50" cy="50" r="5" fill="var(--fg)"/>
+        </svg>
+      </div>
+      <div class="compass-dist" id="compass-dist">—</div>
+      <div class="compass-sub" id="compass-sub"></div>
+      <button id="btn-compass" class="pill big hidden">Enable compass</button>
+    </div>
+  </section>
+
+  <!-- TAB BAR -->
+  <nav class="tabbar">
+    <button class="tabbtn active" data-tab="tab-map">🗺️ Map</button>
+    <button class="tabbtn" data-tab="tab-compass">🧭 Compass</button>
+  </nav>
+
+  <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
