@@ -51,7 +51,8 @@ html, body {
 /* ---------- banner ---------- */
 .banner {
   position: fixed;
-  top: env(safe-area-inset-top);
+  /* sits below the range chips on the map tab */
+  top: calc(env(safe-area-inset-top) + 74px);
   left: 12px; right: 12px;
   z-index: 30;
   background: rgba(30, 30, 42, 0.95);
@@ -132,6 +133,7 @@ html, body {
   box-shadow: 0 2px 12px rgba(0,0,0,0.5);
   cursor: pointer;
 }
+.fab.theme { bottom: 210px; }
 
 /* map markers */
 .marker-store {

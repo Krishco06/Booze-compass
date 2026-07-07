@@ -16,6 +16,7 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 const state = {
   pos: null,          // {lat, lon}
   radius: parseInt(localStorage.getItem("radius"), 10) || DEFAULT_RADIUS_M,
+  dark: localStorage.getItem("mapTheme") !== "light",
   usingFallback: false,
   stores: [],         // sorted by distance
   target: null,       // store the compass points at
@@ -135,25 +136,34 @@ function labelFor(shop) {
 }
 
 /* ---------------- map ---------------- */
+// Dark basemap: CARTO's keyless OSM-based raster tiles. Light: OSM standard tiles.
+function mapStyle(dark) {
+  const source = dark
+    ? {
+        tiles: ["a", "b", "c", "d"].map(
+          (s) => `https://${s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png`
+        ),
+        attribution:
+          "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors © <a href='https://carto.com/attributions'>CARTO</a>",
+      }
+    : {
+        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        attribution: "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors",
+      };
+  return {
+    version: 8,
+    sources: { base: { type: "raster", tileSize: 256, maxzoom: 19, ...source } },
+    layers: [{ id: "base", type: "raster", source: "base" }],
+  };
+}
+
 function initMap() {
   state.map = new maplibregl.Map({
     container: "map",
     center: [state.pos.lon, state.pos.lat],
     zoom: 13,
     attributionControl: { compact: true },
-    style: {
-      version: 8,
-      sources: {
-        osm: {
-          type: "raster",
-          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-          tileSize: 256,
-          maxzoom: 19,
-          attribution: "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors",
-        },
-      },
-      layers: [{ id: "osm", type: "raster", source: "osm" }],
-    },
+    style: mapStyle(state.dark),
   });
 
   const meEl = document.createElement("div");
@@ -380,6 +390,15 @@ function setupMapControls() {
     if (state.map && state.pos) {
       state.map.flyTo({ center: [state.pos.lon, state.pos.lat], zoom: 14 });
     }
+  });
+  const themeBtn = $("btn-theme");
+  const applyThemeIcon = () => (themeBtn.textContent = state.dark ? "☀️" : "🌙");
+  applyThemeIcon();
+  themeBtn.addEventListener("click", () => {
+    state.dark = !state.dark;
+    localStorage.setItem("mapTheme", state.dark ? "dark" : "light");
+    applyThemeIcon();
+    if (state.map) state.map.setStyle(mapStyle(state.dark)); // DOM markers survive setStyle
   });
 }
 

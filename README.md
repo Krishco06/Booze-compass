@@ -4,7 +4,7 @@ A free PWA that finds the nearest liquor store and points a compass arrow straig
 No API keys, no billing accounts, no Apple Developer Program.
 
 - **Data:** OpenStreetMap via the Overpass API (`shop=alcohol|wine|beverages` + `shop=convenience` with `alcohol=yes`)
-- **Map:** MapLibre GL JS + OSM raster tiles (attribution included)
+- **Map:** MapLibre GL JS; dark basemap by default (CARTO dark_all raster tiles, keyless) with a toggle to OSM standard light tiles (attribution included)
 - **Compass:** `webkitCompassHeading` on iOS (button-tap permission required), `deviceorientationabsolute` on Android
 - **No build step:** plain HTML/CSS/JS static files
 
