@@ -46,8 +46,10 @@ Cloudflare Pages / Netlify work the same way — drag-and-drop the folder or con
 - iOS compass via the web is the known weak point — it can drift and needs
   the button-tap permission each session. If it's too flaky, the fallback plan
   is a native Expo app sideloaded via SideStore.
+- Search range is selectable on the map (2 / 5 / 10 / 20 mi) and remembered
+  between sessions.
 - Overpass results are cached in `localStorage` for 15 minutes per ~1 km grid
-  cell; requests time out after 30 s and fall back to a mirror.
+  cell and range; requests time out after 30 s and fall back to a mirror.
 - OSM coverage of liquor stores is imperfect; stores tagged only as generic
   convenience stores without `alcohol=yes` won't appear.
 - Map tiles come from `tile.openstreetmap.org` under its usage policy

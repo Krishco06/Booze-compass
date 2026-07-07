@@ -92,6 +92,47 @@ html, body {
 }
 .pill.big { font-size: 17px; padding: 14px 28px; margin-top: 24px; }
 
+/* radius picker + recenter */
+.radius-bar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 6px;
+  background: rgba(30, 30, 42, 0.9);
+  border-radius: 999px;
+  padding: 5px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+.chip {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 13px;
+  cursor: pointer;
+}
+.chip.active { background: var(--accent); color: #fff; }
+
+.fab {
+  position: absolute;
+  right: 12px;
+  bottom: 150px;
+  z-index: 10;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: var(--panel);
+  font-size: 22px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+
 /* map markers */
 .marker-store {
   width: 30px; height: 30px;
@@ -150,7 +191,8 @@ html, body {
 .arrow {
   width: 65%;
   height: 65%;
-  transition: transform 0.15s ease-out;
+  /* rotation is animated per-frame in JS (shortest-arc); a CSS transition
+     would spin the long way around when the heading crosses 0°/360° */
   will-change: transform;
 }
 

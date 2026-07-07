@@ -1,6 +1,6 @@
 /* Minimal service worker: cache-first for the app shell only.
  * Overpass and map tiles always go to the network (OSM policy forbids tile prefetch/offline). */
-const CACHE = "booze-compass-v2";
+const CACHE = "booze-compass-v3";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

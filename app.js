@@ -6,7 +6,7 @@
 // Demo fallback (Cicero, IL) used when geolocation is denied/unavailable,
 // so the app is still testable on desktop.
 const FALLBACK = { lat: 41.8456, lon: -87.7539 };
-const SEARCH_RADIUS_M = 8000;
+const DEFAULT_RADIUS_M = 8047; // 5 mi
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
@@ -15,6 +15,7 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 
 const state = {
   pos: null,          // {lat, lon}
+  radius: parseInt(localStorage.getItem("radius"), 10) || DEFAULT_RADIUS_M,
   usingFallback: false,
   stores: [],         // sorted by distance
   target: null,       // store the compass points at
@@ -70,7 +71,7 @@ function banner(msg, sticky = false) {
 
 /* ---------------- Overpass ---------------- */
 function overpassQuery(lat, lon) {
-  const around = `(around:${SEARCH_RADIUS_M},${lat.toFixed(5)},${lon.toFixed(5)})`;
+  const around = `(around:${state.radius},${lat.toFixed(5)},${lon.toFixed(5)})`;
   return `[out:json][timeout:25];
 (
   nwr["shop"="alcohol"]${around};
@@ -83,7 +84,7 @@ out center;`;
 
 async function fetchStores(lat, lon) {
   // cache by ~1km grid cell to respect Overpass usage policy
-  const key = `stores:${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const key = `stores:${state.radius}:${lat.toFixed(2)},${lon.toFixed(2)}`;
   try {
     const cached = JSON.parse(localStorage.getItem(key));
     if (cached && Date.now() - cached.t < CACHE_TTL_MS) return cached.stores;
@@ -220,8 +221,10 @@ async function loadStores() {
     state.stores = stores;
     state.fetched = true;
     if (!stores.length) {
-      banner("No liquor stores found within 5 miles 😢", true);
+      const mi = Math.round(state.radius / 1609.344);
+      banner(`No liquor stores found within ${mi} miles 😢 — try a bigger range`, true);
       $("compass-store").textContent = "No stores found nearby";
+      $("store-info").classList.add("hidden");
       return;
     }
     banner(`Found ${stores.length} store${stores.length > 1 ? "s" : ""} nearby`);
@@ -260,6 +263,28 @@ function onHeading(h) {
   updateCompassUI();
 }
 
+/* The arrow is animated per-frame toward its target along the shortest arc.
+ * Two problems this solves vs. setting the rotation directly:
+ *  - crossing 0°/360° no longer spins the arrow the long way around
+ *  - jittery heading readings get low-pass filtered into smooth motion */
+let arrowTarget = 0;
+let arrowCurrent = null;
+function setArrowTarget(deg) {
+  arrowTarget = ((deg % 360) + 360) % 360;
+}
+function stepArrow() {
+  if (arrowCurrent === null) arrowCurrent = arrowTarget;
+  const cur = ((arrowCurrent % 360) + 360) % 360;
+  const delta = ((arrowTarget - cur + 540) % 360) - 180; // shortest signed arc
+  arrowCurrent += Math.abs(delta) < 0.1 ? delta : delta * 0.15;
+  $("arrow").style.transform = `rotate(${arrowCurrent.toFixed(2)}deg)`;
+}
+function animateArrow() {
+  stepArrow();
+  requestAnimationFrame(animateArrow);
+}
+
+let lastSubUpdate = 0;
 function updateCompassUI() {
   const t = state.target;
   if (!t || !state.pos) return;
@@ -270,11 +295,15 @@ function updateCompassUI() {
 
   if (state.heading == null) {
     $("compass-sub").textContent = "Enable the compass to get a live arrow";
-    $("arrow").style.transform = `rotate(${brg}deg)`; // static: bearing relative to north-up dial
+    setArrowTarget(brg); // static: bearing relative to north-up dial
   } else {
-    const rot = (brg - state.heading + 360) % 360;
-    $("arrow").style.transform = `rotate(${rot}deg)`;
-    $("compass-sub").textContent = `Bearing ${Math.round(brg)}° · heading ${Math.round(state.heading)}°`;
+    setArrowTarget(brg - state.heading);
+    // throttle the text so it doesn't flicker at sensor rate
+    const now = Date.now();
+    if (now - lastSubUpdate > 250) {
+      lastSubUpdate = now;
+      $("compass-sub").textContent = `Bearing ${Math.round(brg)}° · heading ${Math.round(state.heading)}°`;
+    }
   }
 }
 
@@ -334,8 +363,30 @@ function setupTabs() {
   });
 }
 
+function setupMapControls() {
+  const bar = $("radius-bar");
+  bar.querySelectorAll(".chip").forEach((c) => {
+    c.classList.toggle("active", parseInt(c.dataset.r, 10) === state.radius);
+    c.addEventListener("click", () => {
+      const r = parseInt(c.dataset.r, 10);
+      if (r === state.radius) return;
+      state.radius = r;
+      localStorage.setItem("radius", String(r));
+      bar.querySelectorAll(".chip").forEach((b) => b.classList.toggle("active", b === c));
+      if (state.pos) loadStores();
+    });
+  });
+  $("btn-recenter").addEventListener("click", () => {
+    if (state.map && state.pos) {
+      state.map.flyTo({ center: [state.pos.lon, state.pos.lat], zoom: 14 });
+    }
+  });
+}
+
 function main() {
   setupTabs();
+  setupMapControls();
+  animateArrow();
   setupCompassPermission();
   startGeolocation();
   if ("serviceWorker" in navigator) {
