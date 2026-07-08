@@ -51,11 +51,16 @@ Cloudflare Pages / Netlify work the same way — drag-and-drop the folder or con
 - iOS compass via the web is the known weak point — it can drift and needs
   the button-tap permission each session. If it's too flaky, the fallback plan
   is a native Expo app sideloaded via SideStore.
-- Search radius is a property of each mode; when a mode returns nothing,
-  "Expand search" doubles its radius for that one search.
-- Overpass results are cached in memory for 5 minutes per mode + radius + ~1 km
-  grid cell; requests time out after 30 s and fall back to a mirror. Fetches
-  only fire on first load, mode change, Expand search, and significant moves.
+- Each mode has a tuned base radius; a manual range picker (×0.5/×1/×2/×4,
+  shown in miles) scales it and resets to the mode default on switch.
+  "Expand search" steps up to the next range when a mode is empty.
+- Overpass mirrors are **raced in parallel** (first healthy one wins, the rest
+  abort) with a few retry rounds — a slow/504'ing primary no longer stalls the
+  search. Results are cached in memory (5 min) and localStorage (30 min) per
+  mode + radius + ~1 km cell, so relaunching is instant. Fetches fire only on
+  first load, mode change, range/expand, and significant moves.
+- Dense modes can return hundreds of hits; the map caps pins to the nearest 75
+  (kept smooth), while the full list still feeds distance sorting and the compass.
 - OSM coverage of liquor stores is imperfect; stores tagged only as generic
   convenience stores without `alcohol=yes` won't appear.
 - Map tiles come from `tile.openstreetmap.org` under its usage policy

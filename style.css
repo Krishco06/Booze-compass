@@ -90,7 +90,8 @@ html, body {
 /* ---------- banner ---------- */
 .banner {
   position: fixed;
-  top: calc(env(safe-area-inset-top) + 12px);
+  /* clears the range picker at the top of the map */
+  top: calc(env(safe-area-inset-top) + 66px);
   left: 12px; right: 12px;
   z-index: 30;
   background: rgba(30, 30, 42, 0.95);
@@ -130,6 +131,34 @@ html, body {
   cursor: pointer;
 }
 .pill.big { font-size: 17px; padding: 14px 28px; margin-top: 24px; }
+
+/* manual range picker — centered pill bar at the top of the map */
+.range-bar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+  max-width: calc(100% - 24px);
+  background: rgba(30, 30, 42, 0.92);
+  border-radius: 999px;
+  padding: 5px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+.chip {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.chip.active { background: var(--accent); color: #fff; }
 
 /* empty-result card (map tab) */
 .empty-card {
