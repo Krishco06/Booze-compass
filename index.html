@@ -24,12 +24,6 @@
   <!-- MAP TAB -->
   <section id="tab-map" class="tab active">
     <div id="map"></div>
-    <div class="radius-bar" id="radius-bar">
-      <button class="chip" data-r="3219">2 mi</button>
-      <button class="chip" data-r="8047">5 mi</button>
-      <button class="chip" data-r="16093">10 mi</button>
-      <button class="chip" data-r="32187">20 mi</button>
-    </div>
     <button id="btn-theme" class="fab theme" title="Toggle light/dark map">🌙</button>
     <button id="btn-recenter" class="fab" title="Recenter on me">🎯</button>
     <div id="store-info" class="store-info hidden">
@@ -37,12 +31,16 @@
       <div class="store-meta" id="info-meta"></div>
       <button id="btn-point" class="pill">Point me there →</button>
     </div>
+    <div id="empty-map" class="empty-card hidden">
+      <div id="empty-map-text"></div>
+      <button id="btn-expand-map" class="pill">Expand search ⟳</button>
+    </div>
   </section>
 
   <!-- COMPASS TAB -->
   <section id="tab-compass" class="tab">
     <div class="compass-wrap">
-      <div class="compass-target" id="compass-store">Finding nearest store…</div>
+      <div class="compass-target" id="compass-store">Finding nearest…</div>
       <div class="compass-dial">
         <div class="tick n">N</div><div class="tick e">E</div>
         <div class="tick s">S</div><div class="tick w">W</div>
@@ -54,8 +52,12 @@
       <div class="compass-dist" id="compass-dist">—</div>
       <div class="compass-sub" id="compass-sub"></div>
       <button id="btn-compass" class="pill big hidden">Enable compass</button>
+      <button id="btn-expand" class="pill hidden">Expand search ⟳</button>
     </div>
   </section>
+
+  <!-- MODE SELECTOR (rendered from MODES; visible on both tabs) -->
+  <nav id="mode-bar" class="mode-bar"></nav>
 
   <!-- TAB BAR -->
   <nav class="tabbar">

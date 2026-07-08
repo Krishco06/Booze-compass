@@ -1,9 +1,14 @@
 # Booze Compass 🧭🍾
 
-A free PWA that finds the nearest liquor store and points a compass arrow straight at it.
-No API keys, no billing accounts, no Apple Developer Program.
+A free PWA that finds the nearest spot in a chosen category and points a compass
+arrow straight at it. No API keys, no billing accounts, no Apple Developer Program.
 
-- **Data:** OpenStreetMap via the Overpass API (`shop=alcohol|wine|beverages` + `shop=convenience` with `alcohol=yes`)
+- **Modes:** six selectable categories, each with its own OSM tag filters and
+  tuned search radius — Liquor (6 km), Bars (5 km), Dispensary (40 km),
+  Casino (80 km), Fast Food (4 km), Smokes (8 km). Sparse categories get a
+  wider net; a mode is one config entry in `MODES`.
+- **Data:** OpenStreetMap via the Overpass API (per-mode tag filters, e.g.
+  `shop=alcohol|wine|beverages`, `amenity=bar|pub`, `shop=cannabis`)
 - **Map:** MapLibre GL JS; dark basemap by default (CARTO dark_all raster tiles, keyless) with a toggle to OSM standard light tiles (attribution included)
 - **Compass:** `webkitCompassHeading` on iOS (button-tap permission required), `deviceorientationabsolute` on Android
 - **No build step:** plain HTML/CSS/JS static files
@@ -46,10 +51,11 @@ Cloudflare Pages / Netlify work the same way — drag-and-drop the folder or con
 - iOS compass via the web is the known weak point — it can drift and needs
   the button-tap permission each session. If it's too flaky, the fallback plan
   is a native Expo app sideloaded via SideStore.
-- Search range is selectable on the map (2 / 5 / 10 / 20 mi) and remembered
-  between sessions.
-- Overpass results are cached in `localStorage` for 15 minutes per ~1 km grid
-  cell and range; requests time out after 30 s and fall back to a mirror.
+- Search radius is a property of each mode; when a mode returns nothing,
+  "Expand search" doubles its radius for that one search.
+- Overpass results are cached in memory for 5 minutes per mode + radius + ~1 km
+  grid cell; requests time out after 30 s and fall back to a mirror. Fetches
+  only fire on first load, mode change, Expand search, and significant moves.
 - OSM coverage of liquor stores is imperfect; stores tagged only as generic
   convenience stores without `alcohol=yes` won't appear.
 - Map tiles come from `tile.openstreetmap.org` under its usage policy

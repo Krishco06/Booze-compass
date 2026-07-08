@@ -1,7 +1,7 @@
 /* Network-first service worker: always serve the freshest app when online,
  * fall back to cache offline. Overpass and map tiles are never cached
  * (OSM policy forbids tile prefetch/offline). */
-const CACHE = "booze-compass-v5";
+const CACHE = "booze-compass-v6";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

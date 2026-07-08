@@ -1,31 +1,70 @@
-/* Booze Compass — nearest liquor store PWA
- * Data: OpenStreetMap via Overpass API (no key). Map: MapLibre + OSM raster tiles.
+/* Booze Compass — nearest "thing" finder PWA
+ * Data: OpenStreetMap via Overpass API (no key). Map: MapLibre + OSM/CARTO raster tiles.
  */
 "use strict";
 
 // Demo fallback (Cicero, IL) used when geolocation is denied/unavailable,
 // so the app is still testable on desktop.
 const FALLBACK = { lat: 41.8456, lon: -87.7539 };
-const DEFAULT_RADIUS_M = 8047; // 5 mi
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
 ];
-const CACHE_TTL_MS = 15 * 60 * 1000;
+const MEM_TTL_MS = 5 * 60 * 1000; // in-memory result cache
+
+/* Single source of truth for all modes. Each mode carries its own OSM tag
+ * filters and its own search radius (metres) — sparse categories get a wider
+ * net, dense ones stay tight so "nearest" is genuinely near. Adding a 7th
+ * mode is a one-line config addition; the UI maps over this array.
+ *
+ * Coverage notes (so misses aren't surprises):
+ *  - dispensary (shop=cannabis): recreational is legal in IL but OSM coverage
+ *    is thin/inconsistent; 40 km radius compensates, Expand search is the fallback.
+ *  - bar (amenity=bar|pub): pub vs bar is tagged fairly arbitrarily, so both.
+ *  - casino (amenity=casino): catches real casinos, NOT the video-gambling
+ *    terminals in IL bars/gas stations (inconsistently tagged — would pollute).
+ *  - smokes (shop=tobacco|e-cigarette): most cigs are actually sold at gas/
+ *    convenience stores, deliberately excluded to avoid drowning in 7-Elevens.
+ *  - fast food (amenity=fast_food): dense & well-mapped; tight 4 km on purpose.
+ */
+const MODES = [
+  { id: "liquor", label: "Liquor", emoji: "🍾", radius: 6000,
+    filters: [["shop", "alcohol"], ["shop", "wine"], ["shop", "beverages"]] },
+
+  { id: "bar", label: "Bars", emoji: "🍺", radius: 5000,
+    filters: [["amenity", "bar"], ["amenity", "pub"]] },
+
+  { id: "dispensary", label: "Dispensary", emoji: "🌿", radius: 40000, // sparse
+    filters: [["shop", "cannabis"]] },
+
+  { id: "casino", label: "Casino", emoji: "🎰", radius: 80000, // very sparse
+    filters: [["amenity", "casino"], ["leisure", "adult_gaming_centre"]] },
+
+  { id: "fastfood", label: "Fast Food", emoji: "🍔", radius: 4000, // dense, keep tight
+    filters: [["amenity", "fast_food"]] },
+
+  { id: "cigarettes", label: "Smokes", emoji: "🚬", radius: 8000,
+    filters: [["shop", "tobacco"], ["shop", "e-cigarette"]] },
+];
 
 const state = {
   pos: null,          // {lat, lon}
-  radius: parseInt(localStorage.getItem("radius"), 10) || DEFAULT_RADIUS_M,
+  mode: MODES.find((m) => m.id === localStorage.getItem("mode")) || MODES[0],
+  expandMult: 1,      // transient radius multiplier from "Expand search" (resets on mode change)
+  searchToken: 0,     // guards against out-of-order responses when switching fast
+  searchPos: null,    // where the last search ran, for significant-move refetch
   dark: localStorage.getItem("mapTheme") !== "light",
   usingFallback: false,
   stores: [],         // sorted by distance
-  target: null,       // store the compass points at
+  target: null,       // place the compass points at
   heading: null,      // degrees clockwise from north
   map: null,
   meMarker: null,
   storeMarkers: [],
   fetched: false,
 };
+
+const memCache = new Map(); // key -> { t, places }
 
 const $ = (id) => document.getElementById(id);
 
@@ -71,27 +110,29 @@ function banner(msg, sticky = false) {
 }
 
 /* ---------------- Overpass ---------------- */
-function overpassQuery(lat, lon) {
-  const around = `(around:${state.radius},${lat.toFixed(5)},${lon.toFixed(5)})`;
-  return `[out:json][timeout:25];
-(
-  nwr["shop"="alcohol"]${around};
-  nwr["shop"="wine"]${around};
-  nwr["shop"="beverages"]${around};
-  nwr["shop"="convenience"]["alcohol"="yes"]${around};
-);
-out center;`;
+// One nwr[...] clause per filter, all within the mode's radius.
+// `out center;` makes ways/relations return a single center lat/lon.
+function buildQuery(mode, lat, lon, radius) {
+  const clauses = mode.filters
+    .map(([k, v]) => `  nwr["${k}"="${v}"](around:${radius},${lat.toFixed(5)},${lon.toFixed(5)});`)
+    .join("\n");
+  return `[out:json][timeout:25];\n(\n${clauses}\n);\nout center;`;
 }
 
-async function fetchStores(lat, lon) {
-  // cache by ~1km grid cell to respect Overpass usage policy
-  const key = `stores:${state.radius}:${lat.toFixed(2)},${lon.toFixed(2)}`;
-  try {
-    const cached = JSON.parse(localStorage.getItem(key));
-    if (cached && Date.now() - cached.t < CACHE_TTL_MS) return cached.stores;
-  } catch { /* ignore bad cache */ }
+// Nodes carry lat/lon directly; ways/relations carry a `center`.
+function coordsOf(el) {
+  const p = el.type === "node" ? el : el.center;
+  return p && p.lat != null && p.lon != null ? { lat: p.lat, lon: p.lon } : null;
+}
 
-  const body = "data=" + encodeURIComponent(overpassQuery(lat, lon));
+async function fetchPlaces(mode, lat, lon, radius) {
+  // in-memory cache keyed on mode + radius + ~1km grid cell, short TTL,
+  // so toggling back to a just-searched mode doesn't refetch (Overpass policy)
+  const key = `${mode.id}:${radius}:${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const hit = memCache.get(key);
+  if (hit && Date.now() - hit.t < MEM_TTL_MS) return hit.places;
+
+  const body = "data=" + encodeURIComponent(buildQuery(mode, lat, lon, radius));
   let lastErr;
   // two rounds over the endpoints; abort any request that hangs
   for (const endpoint of [...OVERPASS_ENDPOINTS, ...OVERPASS_ENDPOINTS]) {
@@ -104,35 +145,38 @@ async function fetchStores(lat, lon) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const stores = (json.elements || [])
+      const places = (json.elements || [])
         .map((el) => {
-          const p = el.center || el;
-          if (p.lat == null || p.lon == null) return null;
+          const c = coordsOf(el);
+          if (!c) return null;
           const tags = el.tags || {};
           return {
             id: `${el.type}/${el.id}`,
-            lat: p.lat,
-            lon: p.lon,
-            name: tags.name || labelFor(tags.shop),
-            shop: tags.shop || "?",
+            lat: c.lat,
+            lon: c.lon,
+            name: tags.name || mode.label,
             addr: [tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" "),
           };
         })
         .filter(Boolean);
-      // de-dup by id (a store can match multiple tag queries)
-      const seen = new Set();
-      const unique = stores.filter((s) => !seen.has(s.id) && seen.add(s.id));
-      try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), stores: unique })); } catch {}
+      // dedupe: same place can appear under multiple tags/types — drop repeats
+      // by OSM id and by rounded coordinate
+      const seenId = new Set();
+      const seenCoord = new Set();
+      const unique = places.filter((p) => {
+        const ck = `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
+        if (seenId.has(p.id) || seenCoord.has(ck)) return false;
+        seenId.add(p.id);
+        seenCoord.add(ck);
+        return true;
+      });
+      memCache.set(key, { t: Date.now(), places: unique });
       return unique;
     } catch (e) {
       lastErr = e;
     }
   }
   throw lastErr;
-}
-
-function labelFor(shop) {
-  return { alcohol: "Liquor store", wine: "Wine shop", beverages: "Beverage shop", convenience: "Convenience store" }[shop] || "Store";
 }
 
 /* ---------------- map ---------------- */
@@ -180,7 +224,7 @@ function renderStores() {
   state.stores.forEach((s, i) => {
     const el = document.createElement("div");
     el.className = "marker-store" + (i === 0 ? " nearest" : "");
-    el.innerHTML = "<span>🍾</span>";
+    el.innerHTML = `<span>${state.mode.emoji}</span>`;
     s._el = el;
     el.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -206,7 +250,7 @@ function selectStore(s) {
   state.stores.forEach((x) => x._el && x._el.classList.toggle("selected", x === s));
   $("info-name").textContent = s.name;
   const d = haversineMeters(state.pos, s);
-  $("info-meta").textContent = [fmtDist(d) + " away", s.addr, labelFor(s.shop)].filter(Boolean).join(" · ");
+  $("info-meta").textContent = [fmtDist(d) + " away", s.addr, state.mode.label].filter(Boolean).join(" · ");
   $("store-info").classList.remove("hidden");
   updateCompassUI();
 }
@@ -217,35 +261,81 @@ function onPosition(lat, lon) {
   state.pos = { lat, lon };
   if (first) {
     initMap();
-    loadStores();
-  } else if (state.meMarker) {
-    state.meMarker.setLngLat([lon, lat]);
+    runSearch();
+  } else {
+    if (state.meMarker) state.meMarker.setLngLat([lon, lat]);
+    // only refetch on a significant move, not on every GPS jitter
+    if (state.searchPos && haversineMeters(state.searchPos, { lat, lon }) > 1000) {
+      runSearch();
+    }
   }
   updateCompassUI();
 }
 
-async function loadStores() {
-  banner("Searching for liquor stores nearby…", true);
+/* Mode-aware search: fetch → dedupe → distance-sort → render both tabs.
+ * Fires only on first load, mode change, Expand search, and significant moves. */
+async function runSearch() {
+  if (!state.pos) return;
+  const mode = state.mode;
+  const radius = mode.radius * state.expandMult;
+  const token = ++state.searchToken;
+  state.searchPos = { lat: state.pos.lat, lon: state.pos.lon };
+  banner(`Finding nearest ${mode.label}…`, true);
   try {
-    const stores = await fetchStores(state.pos.lat, state.pos.lon);
-    stores.forEach((s) => (s.dist = haversineMeters(state.pos, s)));
-    stores.sort((a, b) => a.dist - b.dist);
-    state.stores = stores;
+    const places = await fetchPlaces(mode, state.pos.lat, state.pos.lon, radius);
+    if (token !== state.searchToken) return; // a newer search superseded this one
+    places.forEach((p) => (p.dist = haversineMeters(state.pos, p)));
+    places.sort((a, b) => a.dist - b.dist);
+    state.stores = places;
     state.fetched = true;
-    if (!stores.length) {
-      const mi = Math.round(state.radius / 1609.344);
-      banner(`No liquor stores found within ${mi} miles 😢 — try a bigger range`, true);
-      $("compass-store").textContent = "No stores found nearby";
-      $("store-info").classList.add("hidden");
+    if (!places.length) {
+      handleEmpty(mode, radius);
       return;
     }
-    banner(`Found ${stores.length} store${stores.length > 1 ? "s" : ""} nearby`);
+    hideEmpty();
+    banner(`Found ${places.length} nearby`);
     renderStores();
-    selectStore(stores[0]); // nearest
+    selectStore(places[0]); // nearest becomes the compass target
   } catch (e) {
-    banner("Couldn't reach the store database (Overpass). Try again later.", true);
+    if (token !== state.searchToken) return;
+    banner("Couldn't reach the map database (Overpass). Try again.", true);
     console.error(e);
   }
+}
+
+function fmtKm(m) {
+  const km = m / 1000;
+  return km >= 10 ? `${Math.round(km)} km` : `${km.toFixed(1)} km`;
+}
+
+// Empty results: message on both tabs, compass arrow hidden, map on the user,
+// plus an "Expand search" button that doubles the radius for the next try.
+function handleEmpty(mode, radius) {
+  state.stores = [];
+  state.target = null;
+  renderStores(); // clears markers
+  const msg = `No ${mode.label.toLowerCase()} found within ${fmtKm(radius)}`;
+  banner(msg, true);
+  $("store-info").classList.add("hidden");
+  $("empty-map-text").textContent = msg;
+  $("empty-map").classList.remove("hidden");
+  document.querySelector(".compass-wrap").classList.add("empty");
+  $("compass-store").textContent = msg;
+  $("compass-dist").textContent = "";
+  $("compass-sub").textContent = "";
+  $("btn-expand").classList.remove("hidden");
+  if (state.map) state.map.flyTo({ center: [state.pos.lon, state.pos.lat], zoom: 12 });
+}
+
+function hideEmpty() {
+  $("empty-map").classList.add("hidden");
+  document.querySelector(".compass-wrap").classList.remove("empty");
+  $("btn-expand").classList.add("hidden");
+}
+
+function expandSearch() {
+  state.expandMult *= 2; // transient — never mutates the mode config
+  runSearch();
 }
 
 function startGeolocation() {
@@ -392,19 +482,30 @@ function setupTabs() {
   });
 }
 
-function setupMapControls() {
-  const bar = $("radius-bar");
-  bar.querySelectorAll(".chip").forEach((c) => {
-    c.classList.toggle("active", parseInt(c.dataset.r, 10) === state.radius);
-    c.addEventListener("click", () => {
-      const r = parseInt(c.dataset.r, 10);
-      if (r === state.radius) return;
-      state.radius = r;
-      localStorage.setItem("radius", String(r));
-      bar.querySelectorAll(".chip").forEach((b) => b.classList.toggle("active", b === c));
-      if (state.pos) loadStores();
+// Render the mode selector from MODES (mapped, not hardcoded — a 7th mode
+// just needs a config entry). Tapping a mode re-runs the search.
+function renderModeBar() {
+  const bar = $("mode-bar");
+  bar.innerHTML = "";
+  MODES.forEach((m) => {
+    const btn = document.createElement("button");
+    btn.className = "mode-btn" + (m.id === state.mode.id ? " active" : "");
+    btn.innerHTML = `<span class="mb-emoji">${m.emoji}</span><span>${m.label}</span>`;
+    btn.addEventListener("click", () => {
+      if (m.id === state.mode.id) return;
+      state.mode = m;
+      state.expandMult = 1; // fresh mode starts at its own radius
+      localStorage.setItem("mode", m.id);
+      renderModeBar();
+      if (state.pos) runSearch();
     });
+    bar.appendChild(btn);
   });
+}
+
+function setupMapControls() {
+  $("btn-expand").addEventListener("click", expandSearch);
+  $("btn-expand-map").addEventListener("click", expandSearch);
   $("btn-recenter").addEventListener("click", () => {
     if (state.map && state.pos) {
       state.map.flyTo({ center: [state.pos.lon, state.pos.lat], zoom: 14 });
@@ -423,6 +524,7 @@ function setupMapControls() {
 
 function main() {
   setupTabs();
+  renderModeBar();
   setupMapControls();
   animateArrow();
   setupCompassPermission();

@@ -5,6 +5,7 @@
   --muted: #9a9aad;
   --accent: #ff5a5f;
   --tabbar-h: 64px;
+  --modebar-h: 56px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,10 +23,48 @@ html, body {
 /* ---------- tabs ---------- */
 .tab {
   position: fixed;
-  inset: 0 0 var(--tabbar-h) 0;
+  inset: 0 0 calc(var(--tabbar-h) + var(--modebar-h) + env(safe-area-inset-bottom)) 0;
   display: none;
 }
 .tab.active { display: block; }
+
+/* mode selector — thin scrollable strip above the tab bar, on both tabs */
+.mode-bar {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  height: var(--modebar-h);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  background: var(--panel);
+  border-top: 1px solid #2e2e3e;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.mode-bar::-webkit-scrollbar { display: none; }
+.mode-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 999px;
+  background: #2a2a38;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 15px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mode-btn.active { background: var(--accent); color: #fff; }
+.mb-emoji { font-size: 16px; }
 
 .tabbar {
   position: fixed;
@@ -51,8 +90,7 @@ html, body {
 /* ---------- banner ---------- */
 .banner {
   position: fixed;
-  /* sits below the range chips on the map tab */
-  top: calc(env(safe-area-inset-top) + 74px);
+  top: calc(env(safe-area-inset-top) + 12px);
   left: 12px; right: 12px;
   z-index: 30;
   background: rgba(30, 30, 42, 0.95);
@@ -93,32 +131,20 @@ html, body {
 }
 .pill.big { font-size: 17px; padding: 14px 28px; margin-top: 24px; }
 
-/* radius picker + recenter */
-.radius-bar {
+/* empty-result card (map tab) */
+.empty-card {
   position: absolute;
-  top: calc(env(safe-area-inset-top) + 10px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 12px; right: 12px; bottom: 12px;
   z-index: 10;
-  display: flex;
-  gap: 6px;
-  background: rgba(30, 30, 42, 0.9);
-  border-radius: 999px;
-  padding: 5px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
-.chip {
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 7px 13px;
-  cursor: pointer;
-}
-.chip.active { background: var(--accent); color: #fff; }
+#empty-map-text { font-weight: 600; margin-bottom: 12px; }
 
+/* recenter / theme buttons */
 .fab {
   position: absolute;
   right: 12px;
@@ -214,3 +240,8 @@ html, body {
   color: var(--muted);
   margin-top: 6px;
 }
+
+/* compass empty state: hide the dial + distance, show the message + expand */
+.compass-wrap.empty .compass-dial,
+.compass-wrap.empty #compass-dist { display: none; }
+#btn-expand { margin-top: 22px; }
